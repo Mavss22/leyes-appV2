@@ -1,13 +1,7 @@
 // src/modules/admin/AdminPdfImporter.jsx
 import { useEffect, useState } from "react";
-import { authHeader } from "../../utils/authHeader";
 import { useNavigate } from "react-router-dom";
-
-//const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const isProd = import.meta.env.MODE === "production";
-// 🔒 En producción SIEMPRE mismo origen; en dev usa VITE_API_URL o localhost
-const API = isProd ? "" : (import.meta.env.VITE_API_URL ?? "http://localhost:4000");
-
+import { API_URL, authHeaders, apiGet } from "@/api";
 
 export default function AdminPdfImporter() {
   const [regs, setRegs] = useState([]);
@@ -21,12 +15,7 @@ export default function AdminPdfImporter() {
     (async () => {
       try {
         setErr("");
-        const res = await fetch(`${API}/api/admin/regulaciones`, { headers: authHeader() });
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(`HTTP ${res.status} ${res.statusText} ${text}`);
-        }
-        const data = await res.json();
+        const data = await apiGet("/api/admin/regulaciones");
         const arr = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
         setRegs(arr || []);
       } catch (e) {
@@ -49,10 +38,11 @@ export default function AdminPdfImporter() {
       fd.append("regulation_id", regId);
       fd.append("file", file);
 
-      const res = await fetch(`${API}/api/admin/upload/pdf`, {
+      // Upload con FormData: usar API_URL + Authorization, sin Content-Type manual
+      const res = await fetch(`${API_URL}/api/admin/upload/pdf`, {
         method: "POST",
-        headers: authHeader(), // solo Authorization
-        body: fd,              // NO fijes Content-Type
+        headers: authHeaders(), // solo Authorization
+        body: fd,
       });
 
       if (!res.ok) {
@@ -63,7 +53,6 @@ export default function AdminPdfImporter() {
       const data = await res.json();
       alert(`Listo. Insertados: ${data.inserted}  |  Omitidos: ${data.skipped || 0}`);
       setFile(null);
-      // Mantengo la regulación seleccionada para que el botón "Ver artículos" navegue con contexto
     } catch (e) {
       console.error("Error importando PDF:", e);
       setErr("Error procesando PDF.");

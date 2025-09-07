@@ -1,11 +1,6 @@
 // src/modules/admin/AdminCompanies.jsx
 import { useEffect, useState } from "react";
-import { authHeader } from "../../utils/authHeader";
-
-//const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const isProd = import.meta.env.MODE === "production";
-// 🔒 En producción SIEMPRE mismo origen; en dev usa VITE_API_URL o localhost
-const API = isProd ? "" : (import.meta.env.VITE_API_URL ?? "http://localhost:4000");
+import { API_URL, authHeaders, apiGet, apiPost, apiDelete } from "@/api";
 
 export default function AdminCompanies() {
   const [rows, setRows] = useState([]);
@@ -21,10 +16,10 @@ export default function AdminCompanies() {
   const normalizeCompany = (raw) => ({
     id: raw.id,
     name: raw.name || "",
-    nit: raw.tax_id || "",           // <— NIT desde tax_id
+    nit: raw.tax_id || "",
     address: raw.address || "",
     phone: raw.phone || "",
-    active: !!raw.is_active,         // <— Estado desde is_active
+    active: !!raw.is_active,
     created_at: raw.created_at || null,
   });
 
@@ -32,9 +27,7 @@ export default function AdminCompanies() {
     try {
       setLoading(true);
       setErr("");
-      const r = await fetch(`${API}/api/admin/empresas`, { headers: authHeader() || {} });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
+      const data = await apiGet("/api/admin/empresas");
       const list = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
       setRows(list.map(normalizeCompany));
     } catch (e) {
@@ -55,19 +48,11 @@ export default function AdminCompanies() {
       setErr("");
       const body = {
         name: name.trim(),
-        tax_id: nit.trim() || null,   // <— enviar tax_id
+        tax_id: nit.trim() || null,
         address: address.trim() || null,
         phone: phone.trim() || null,
       };
-      const r = await fetch(`${API}/api/admin/empresas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(authHeader() || {}) },
-        body: JSON.stringify(body),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
-
-      // añadir al listado
+      const data = await apiPost("/api/admin/empresas", body);
       setRows((prev) => [normalizeCompany(data), ...prev]);
       setName(""); setNit(""); setAddress(""); setPhone("");
     } catch (e) {
@@ -78,11 +63,12 @@ export default function AdminCompanies() {
     }
   }
 
+  // Para PATCH no tenemos helper: usamos fetch + API_URL
   async function toggleCompany(id) {
     try {
-      const r = await fetch(`${API}/api/admin/empresas/${id}/toggle`, {
+      const r = await fetch(`${API_URL}/api/admin/empresas/${id}/toggle`, {
         method: "PATCH",
-        headers: authHeader() || {},
+        headers: authHeaders(),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
@@ -98,14 +84,7 @@ export default function AdminCompanies() {
   async function deleteCompany(id) {
     if (!confirm("¿Eliminar esta empresa?")) return;
     try {
-      const r = await fetch(`${API}/api/admin/empresas/${id}`, {
-        method: "DELETE",
-        headers: authHeader() || {},
-      });
-      if (!r.ok) {
-        const t = await r.text().catch(() => "");
-        throw new Error(t || `HTTP ${r.status}`);
-      }
+      await apiDelete(`/api/admin/empresas/${id}`);
       setRows((prev) => prev.filter((x) => x.id !== id));
     } catch (e) {
       console.error("DELETE /api/admin/empresas/:id ->", e);

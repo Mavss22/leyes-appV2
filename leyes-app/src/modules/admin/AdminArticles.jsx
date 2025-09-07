@@ -1,12 +1,6 @@
 // src/modules/admin/AdminArticles.jsx
 import { useEffect, useMemo, useState } from "react";
-import { authHeader } from "../../utils/authHeader";
-
-//const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-
-const isProd = import.meta.env.MODE === "production";
-// 🔒 En producción SIEMPRE mismo origen; en dev usa VITE_API_URL o localhost
-const API = isProd ? "" : (import.meta.env.VITE_API_URL ?? "http://localhost:4000");
+import { API_URL, authHeaders, apiGet, apiPost } from "@/api";
 
 function numFromCode(code) {
   const m = /(\d+)/.exec(code || "");
@@ -21,9 +15,8 @@ export default function AdminArticles() {
   const [err, setErr] = useState("");
   const [q, setQ] = useState("");
 
-  // preguntas por artículo (control nuevo)
   const [questionDraft, setQuestionDraft] = useState({}); // { [articleId]: "texto..." }
-  const [savingRow, setSavingRow] = useState(null); // articleId mientras guarda
+  const [savingRow, setSavingRow] = useState(null);
 
   const [page, setPage] = useState(1);
   const pageSize = 20;
@@ -33,9 +26,7 @@ export default function AdminArticles() {
     (async () => {
       try {
         setErr("");
-        const r = await fetch(`${API}/api/admin/regulaciones`, { headers: authHeader() });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
+        const data = await apiGet("/api/admin/regulaciones");
         const arr = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
         setRegs(arr);
         if (arr.length && !regId) setRegId(arr[0].id);
@@ -49,9 +40,7 @@ export default function AdminArticles() {
 
   // cargar artículos por regulación
   const loadArticles = async (rid) => {
-    const r = await fetch(`${API}/api/admin/regulaciones/${rid}/articulos`, { headers: authHeader() });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
+    const data = await apiGet(`/api/admin/regulaciones/${rid}/articulos`);
     setItems(Array.isArray(data) ? data : []);
   };
 
@@ -119,9 +108,9 @@ export default function AdminArticles() {
   async function toggleEnabled(a) {
     try {
       setSavingRow(a.id);
-      const r = await fetch(`${API}/api/admin/articulos/${a.id}`, {
+      const r = await fetch(`${API_URL}/api/admin/articulos/${a.id}`, {
         method: "PATCH",
-        headers: { ...authHeader(), "Content-Type": "application/json" },
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ is_enabled: !a.is_enabled }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -140,22 +129,14 @@ export default function AdminArticles() {
     if (!texto) { alert("Escribe una pregunta."); return; }
     try {
       setSavingRow(a.id);
-      const r = await fetch(`${API}/api/admin/controles`, {
-        method: "POST",
-        headers: { ...authHeader(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          regulation_id: a.regulation_id,
-          article_id: a.id,
-          clave: a.code,            // opcional: usamos el código como clave
-          pregunta: texto,
-          recomendacion: null,
-          peso: 1,
-        }),
+      await apiPost("/api/admin/controles", {
+        regulacion_id: a.regulation_id,
+        articulo_id: a.id,
+        clave: a.code,
+        pregunta: texto,
+        recomendacion: null,
+        peso: 1,
       });
-      if (!r.ok) {
-        const txt = await r.text().catch(()=> "");
-        throw new Error(`HTTP ${r.status} ${txt}`);
-      }
       setQuestionDraft(prev => ({ ...prev, [a.id]: "" }));
       alert("✅ Pregunta creada para el artículo.");
     } catch (e) {
@@ -233,7 +214,6 @@ export default function AdminArticles() {
                     {(a.body && a.body.length > 240) ? "…" : ""}
                   </td>
 
-                  {/* Toggle usar/no usar */}
                   <td>
                     <button
                       className="btn-secondary"
@@ -245,7 +225,6 @@ export default function AdminArticles() {
                     </button>
                   </td>
 
-                  {/* Campo para crear pregunta */}
                   <td>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input

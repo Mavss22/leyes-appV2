@@ -1,5 +1,6 @@
+// src/modules/admin/AdminControlBuilder.jsx
 import { useEffect, useState } from "react";
-import { authHeader } from "../../utils/authHeader";
+import { apiGet, apiPost } from "@/api";
 
 export default function AdminControlBuilder() {
   const [regulations, setRegulations] = useState([]);
@@ -11,39 +12,36 @@ export default function AdminControlBuilder() {
   });
 
   useEffect(() => {
-    fetch("/api/admin/regulations", { headers: authHeader() })
-      .then(r => r.json()).then(setRegulations);
+    apiGet("/api/admin/regulaciones").then(setRegulations).catch(console.error);
   }, []);
 
   useEffect(() => {
-    if (!regulationId) return;
-    fetch(`/api/admin/regulations/${regulationId}/articles`, { headers: authHeader() })
-      .then(r => r.json()).then(setArticles);
+    if (!regulationId) { setArticles([]); return; }
+    apiGet(`/api/admin/regulaciones/${regulationId}/articulos`)
+      .then(setArticles)
+      .catch(() => setArticles([]));
   }, [regulationId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = {
-      regulation_id: regulationId,
-      article_id: articleId || null,
+      regulacion_id: regulationId,
+      articulo_id: articleId || null,
       clave: form.key,
       pregunta: form.question,
       recomendacion: form.recommendation,
       peso: Number(form.weight) || 1
     };
 
-    const res = await fetch("/api/admin/controls", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader() },
-      body: JSON.stringify(payload)
-    });
+    const ok = await apiPost("/api/admin/controles", payload)
+      .then(()=>true).catch(()=>false);
 
-    if (res.ok) {
+    if (ok) {
       setForm({ key: "", question: "", recommendation: "", weight: 1 });
       setArticleId("");
-      alert("Control saved successfully");
+      alert("Control guardado correctamente");
     } else {
-      alert("Error saving control");
+      alert("Error guardando control");
     }
   };
 
@@ -51,11 +49,11 @@ export default function AdminControlBuilder() {
 
   return (
     <div className="page-container">
-      <h1>Create New Control</h1>
+      <h1>Crear nuevo control</h1>
       <form onSubmit={handleSubmit} className="g-card" style={{ maxWidth: 820 }}>
-        <label>Regulation</label>
+        <label>Regulación</label>
         <select value={regulationId} onChange={e => setRegulationId(e.target.value)} required>
-          <option value="">Select</option>
+          <option value="">Seleccione</option>
           {regulations.map(r => (
             <option key={r.id} value={r.id}>
               {r.code || r.codigo} — {r.name || r.nombre}
@@ -63,12 +61,12 @@ export default function AdminControlBuilder() {
           ))}
         </select>
 
-        <label style={{ marginTop: 12 }}>Article (optional)</label>
+        <label style={{ marginTop: 12 }}>Artículo (opcional)</label>
         <select value={articleId} onChange={e => setArticleId(e.target.value)}>
-          <option value="">— No article —</option>
+          <option value="">— Sin artículo —</option>
           {articles.map(a => (
             <option key={a.id} value={a.id}>
-              {(a.code || a.codigo || "n/a")} — {a.title?.slice(0, 80) || a.titulo?.slice(0, 80) || "Untitled"}
+              {(a.code || a.codigo || "n/a")} — {a.title?.slice(0, 80) || a.titulo?.slice(0, 80) || "Sin título"}
             </option>
           ))}
         </select>
@@ -77,28 +75,28 @@ export default function AdminControlBuilder() {
           <div className="g-card" style={{ marginTop: 12, background: "#f7f9fc" }}>
             <b>{selectedArticle?.code || selectedArticle?.codigo} — {selectedArticle?.title || selectedArticle?.titulo}</b>
             <p style={{ whiteSpace: "pre-wrap" }}>
-              {selectedArticle?.body?.slice(0, 800) || selectedArticle?.cuerpo?.slice(0, 800) || "No content"}
+              {selectedArticle?.body?.slice(0, 800) || selectedArticle?.cuerpo?.slice(0, 800) || "Sin contenido"}
             </p>
           </div>
         )}
 
-        <label style={{ marginTop: 12 }}>Control Key</label>
+        <label style={{ marginTop: 12 }}>Clave</label>
         <input value={form.key} onChange={e => setForm({ ...form, key: e.target.value })} required />
 
-        <label>Evaluation Question</label>
+        <label>Pregunta de evaluación</label>
         <textarea rows={3} value={form.question}
           onChange={e => setForm({ ...form, question: e.target.value })} required />
 
-        <label>Recommendation</label>
+        <label>Recomendación</label>
         <textarea rows={3} value={form.recommendation}
           onChange={e => setForm({ ...form, recommendation: e.target.value })} />
 
-        <label>Weight</label>
+        <label>Peso</label>
         <input type="number" min="0.5" step="0.5"
           value={form.weight} onChange={e => setForm({ ...form, weight: e.target.value })} />
 
         <button type="submit" className="btn-primary" style={{ marginTop: 16 }}>
-          Save Control
+          Guardar control
         </button>
       </form>
     </div>
