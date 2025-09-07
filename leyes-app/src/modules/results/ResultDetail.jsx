@@ -3,7 +3,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useNavigate, useParams } from "react-router-dom";
-import { API, authHeaders, apiGet } from "@/api";
+import * as api from "@/api";
+
+// Compat: usa la constante disponible desde src/api.js
+const API_BASE = api.API ?? api.API_URL ?? "";
+// Compat: toma helpers si existen; si no, crea fallbacks sencillos
+const authHeaders =
+  api.authHeaders ??
+  (() => {
+    const t = localStorage.getItem("token");
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  });
+const apiGet =
+  api.apiGet ??
+  (async (path) => {
+    const r = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  });
 
 export default function ResultDetail() {
   const { id } = useParams();
@@ -70,8 +87,7 @@ export default function ResultDetail() {
     return m;
   }, [controles]);
 
-  const fmtNivel = (pct) =>
-    pct >= 80 ? "Alto" : pct >= 60 ? "Medio" : pct >= 40 ? "Bajo" : "Crítico";
+  const fmtNivel = (pct) => (pct >= 80 ? "Alto" : pct >= 60 ? "Medio" : pct >= 40 ? "Bajo" : "Crítico");
 
   const pct = ev?.cumplimiento ?? ev?.pct ?? 0;
   const nivel = ev?.nivel || fmtNivel(pct);
@@ -124,7 +140,7 @@ export default function ResultDetail() {
       fd.append("clave", clave);
       item.filesToSend.forEach((f) => fd.append("files", f));
 
-      const r = await fetch(`${API}/api/evidencias`, {
+      const r = await fetch(`${API_BASE}/api/evidencias`, {
         method: "POST",
         headers: authHeaders(),
         body: fd,
@@ -136,12 +152,7 @@ export default function ResultDetail() {
       const data = await r.json();
       setEvidencias((prev) => ({
         ...prev,
-        [clave]: {
-          filesToSend: [],
-          uploaded: data.files || [],
-          uploading: false,
-          err: "",
-        },
+        [clave]: { filesToSend: [], uploaded: data.files || [], uploading: false, err: "" },
       }));
       alert("Evidencia subida correctamente.");
     } catch (e) {
@@ -156,7 +167,7 @@ export default function ResultDetail() {
   const saveControl = async (clave) => {
     try {
       const r = await fetch(
-        `${API}/api/evaluaciones/${id}/respuestas/${encodeURIComponent(clave)}`,
+        `${API_BASE}/api/evaluaciones/${id}/respuestas/${encodeURIComponent(clave)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -258,8 +269,7 @@ export default function ResultDetail() {
       const v = answers[clave] || row.valor || "";
       if (v !== "true") {
         const meta = controlesByKey.get(clave) || {};
-        const recomendacion =
-          v === "partial" ? "Revisar y completar este control." : "Implementar este control.";
+        const recomendacion = v === "partial" ? "Revisar y completar este control." : "Implementar este control.";
         incumplimientos.push({
           control: meta.pregunta || `Control ${clave}`,
           articulo: getArticleLabel(meta),
@@ -329,23 +339,11 @@ export default function ResultDetail() {
 
   return (
     <div className="page-container" style={{ paddingTop: 18 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 12,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
         <h1 style={{ margin: 0 }}>Evaluación — {ev.normativa}</h1>
         <div style={{ display: "flex", gap: 10 }}>
-          <button className="btn-secondary" onClick={() => navigate(-1)}>
-            Volver
-          </button>
-          <button className="btn-primary" onClick={downloadReportPdf}>
-            Descargar PDF
-          </button>
+          <button className="btn-secondary" onClick={() => navigate(-1)}>Volver</button>
+          <button className="btn-primary" onClick={downloadReportPdf}>Descargar PDF</button>
         </div>
       </div>
 
@@ -354,44 +352,23 @@ export default function ResultDetail() {
         <div style={{ display: "grid", gap: 12, alignContent: "start" }}>
           <div className="g-card" style={{ padding: 14 }}>
             <h3 style={{ margin: "0 0 10px 0", color: "#1565c0" }}>Resultado</h3>
-            <p>
-              <strong>Empresa:</strong> {ev.company_name || "-"}
-            </p>
-            <p>
-              <strong>Cumplimiento:</strong> {Math.round(pct)}%
-            </p>
+            <p><strong>Empresa:</strong> {ev.company_name || "-"}</p>
+            <p><strong>Cumplimiento:</strong> {Math.round(pct)}%</p>
             <p>
               <strong>Nivel:</strong>{" "}
-              <span
-                style={{
-                  backgroundColor: colorNivel(pct),
-                  color: "white",
-                  padding: "2px 8px",
-                  borderRadius: 6,
-                }}
-              >
+              <span style={{ backgroundColor: colorNivel(pct), color: "white", padding: "2px 8px", borderRadius: 6 }}>
                 {nivel}
               </span>
             </p>
           </div>
 
           <div className="g-card" style={{ padding: 14 }}>
-            <p>
-              <strong>Normativa:</strong> {ev.normativa}
-            </p>
-            <p>
-              <strong>Estado:</strong> {ev.status || "open"} <small>(editable)</small>
-            </p>
+            <p><strong>Normativa:</strong> {ev.normativa}</p>
+            <p><strong>Estado:</strong> {ev.status || "open"} <small>(editable)</small></p>
             {ev.started_at && (
               <p style={{ marginTop: 8 }}>
-                <small>
-                  <strong>Fecha inicio:</strong> {new Date(ev.started_at).toLocaleString()}
-                </small>
-                <br />
-                <small>
-                  <strong>Fecha límite:</strong>{" "}
-                  {ev.due_at ? new Date(ev.due_at).toLocaleString() : "-"}
-                </small>
+                <small><strong>Fecha inicio:</strong> {new Date(ev.started_at).toLocaleString()}</small><br />
+                <small><strong>Fecha límite:</strong> {ev.due_at ? new Date(ev.due_at).toLocaleString() : "-"}</small>
               </p>
             )}
           </div>
@@ -406,13 +383,7 @@ export default function ResultDetail() {
               const clave = row.control_clave || row.clave;
               const val = answers[clave] || "";
               const ctrl = controlesByKey.get(clave) || {};
-              const evd =
-                evidencias[clave] || {
-                  filesToSend: [],
-                  uploaded: [],
-                  uploading: false,
-                  err: "",
-                };
+              const evd = evidencias[clave] || { filesToSend: [], uploaded: [], uploading: false, err: "" };
 
               return (
                 <div key={clave || idx} className="g-card" style={{ padding: 12 }}>
@@ -420,31 +391,19 @@ export default function ResultDetail() {
                     {ctrl.pregunta ? ctrl.pregunta : `Control ${clave}`}
                     {getArticleLabel(ctrl) !== "-" && (
                       <span style={{ opacity: 0.7, fontWeight: 400 }}>
-                        {" "}
-                        <em>({getArticleLabel(ctrl)})</em>
+                        {" "} <em>({getArticleLabel(ctrl)})</em>
                       </span>
                     )}
                   </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      marginBottom: 8,
-                    }}
-                  >
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
                     <button
                       type="button"
                       onClick={() => setAnswer(clave, "true")}
                       style={{
                         background: val === "true" ? "#4caf50" : "#eee",
                         color: val === "true" ? "#fff" : "#111",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
+                        border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer",
                       }}
                     >
                       ✔️ Sí
@@ -455,10 +414,7 @@ export default function ResultDetail() {
                       style={{
                         background: val === "partial" ? "#ffc107" : "#eee",
                         color: "#111",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
+                        border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer",
                       }}
                     >
                       ⚠️ Parcial
@@ -469,10 +425,7 @@ export default function ResultDetail() {
                       style={{
                         background: val === "false" ? "#f44336" : "#eee",
                         color: val === "false" ? "#fff" : "#111",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
+                        border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer",
                       }}
                     >
                       ❌ No
@@ -490,23 +443,8 @@ export default function ResultDetail() {
                   </div>
 
                   {(val === "true" || val === "partial") && (
-                    <div
-                      style={{
-                        margin: "10px 0",
-                        background: "#f5f8ff",
-                        border: "1px dashed #90caf9",
-                        padding: 12,
-                        borderRadius: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                          alignItems: "center",
-                          flexWrap: "wrap",
-                        }}
-                      >
+                    <div style={{ margin: "10px 0", background: "#f5f8ff", border: "1px dashed #90caf9", padding: 12, borderRadius: 8 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                         <input
                           type="file"
                           multiple
@@ -527,10 +465,7 @@ export default function ResultDetail() {
 
                       {evd.filesToSend?.length > 0 && (
                         <div style={{ marginTop: 6 }}>
-                          <small>
-                            <strong>Seleccionados:</strong>{" "}
-                            {evd.filesToSend.map((f) => f.name).join(", ")}
-                          </small>
+                          <small><strong>Seleccionados:</strong> {evd.filesToSend.map((f) => f.name).join(", ")}</small>
                         </div>
                       )}
 
@@ -539,13 +474,7 @@ export default function ResultDetail() {
                           <small>
                             <strong>Subidos:</strong>{" "}
                             {evd.uploaded.map((f, i) => (
-                              <a
-                                key={i}
-                                href={`${API}${f.url}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ marginRight: 10 }}
-                              >
+                              <a key={i} href={`${API_BASE}${f.url}`} target="_blank" rel="noreferrer" style={{ marginRight: 10 }}>
                                 {f.filename}
                               </a>
                             ))}
@@ -559,14 +488,7 @@ export default function ResultDetail() {
                     <button
                       className="btn-primary"
                       onClick={() => saveControl(clave)}
-                      style={{
-                        background: "#5b6bff",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 8,
-                        padding: "8px 14px",
-                        cursor: "pointer",
-                      }}
+                      style={{ background: "#5b6bff", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}
                     >
                       Guardar cambios
                     </button>
