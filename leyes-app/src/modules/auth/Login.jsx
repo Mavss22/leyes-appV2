@@ -1,13 +1,10 @@
+// src/pages/Login.jsx
 import React, { useState } from "react";
 import "./Login.css";
 import logo from "@/assets/logoLOGIN.png";
 import rocketImg from "@/assets/Rocket-PNG-High-Quality-Image.png";
 import { useNavigate } from "react-router-dom";
-
-//const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const isProd = import.meta.env.MODE === "production";
-// 🔒 En producción SIEMPRE mismo origen; en dev usa VITE_API_URL o localhost
-const API = isProd ? "" : (import.meta.env.VITE_API_URL ?? "http://localhost:4000");
+import { apiPost } from "@/api"; // ← USAR SIEMPRE apiPost (toma VITE_API_URL)
 
 function decodeJwt(token) {
   try {
@@ -17,7 +14,7 @@ function decodeJwt(token) {
     const jsonStr = atob(b64);
     return JSON.parse(jsonStr);
   } catch {
-    return null;  
+    return null;
   }
 }
 
@@ -40,26 +37,16 @@ const Login = () => {
         password: password.trim(),
       };
 
-      const res = await fetch(`${API}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(body),
-      });
+      // 🔁 SIEMPRE va al backend (usa VITE_API_URL dentro de apiPost)
+      const data = await apiPost("/api/auth/login", body);
 
-      let data = {};
-      try { data = await res.json(); } catch {}
-
-      if (!res.ok) {
-        const message =
-          data?.error ||
-          (res.status === 401 ? "Usuario o contraseña incorrectos" : "No se pudo iniciar sesión");
-        throw new Error(message);
+      if (!data?.token) {
+        throw new Error("Respuesta inválida del servidor (falta token)");
       }
-
-      if (!data?.token) throw new Error("Respuesta inválida del servidor (falta token)");
 
       localStorage.setItem("token", data.token);
 
+      // Preferir user del backend; si no viene, derivarlo del JWT
       let user = data.user ?? null;
       if (!user) {
         const payload = decodeJwt(data.token);
@@ -85,7 +72,7 @@ const Login = () => {
 
   return (
     <div className="login-container">
-      {/* Columna izquierda: tarjeta centrada vertical y horizontalmente */}
+      {/* Columna izquierda: tarjeta centrada */}
       <div className="login-left">
         <div className="login-box">
           <img src={logo} alt="Logo" className="login-logo" />
@@ -123,7 +110,7 @@ const Login = () => {
         </div>
       </div>
 
-      {/* Columna derecha: ilustración grande centrada */}
+      {/* Columna derecha: ilustración */}
       <div className="login-right">
         <div className="login-illustration">
           <img src={rocketImg} alt="Rocket" />
