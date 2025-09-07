@@ -41,7 +41,7 @@ export default function App() {
             <Route path="/results" element={<Results />} />
             <Route path="/results/:id" element={<ResultDetail />} />
 
-            {/* Solo Admin */}
+            {/* Solo Admin test */}
             <Route element={<AdminRoute />}>
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/regulaciones" element={<RegulacionesAdmin />} />
