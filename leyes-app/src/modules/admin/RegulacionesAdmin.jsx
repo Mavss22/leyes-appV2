@@ -1,19 +1,6 @@
 // src/modules/admin/RegulacionesAdmin.jsx
 import { useEffect, useState } from "react";
-
-//const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-//const ENDPOINT = `${API}/api/admin/regulaciones`;
-
-const isProd = import.meta.env.MODE === "production";
-const API = isProd ? "" : (import.meta.env.VITE_API_URL ?? "http://localhost:4000");
-const ENDPOINT = `${API}/api/admin/regulaciones`;
-
-
-
-function authHeaders() {
-  const t = localStorage.getItem("token");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
+import { apiGet, apiPost } from "@/api";
 
 export default function RegulacionesAdmin() {
   const [regs, setRegs] = useState([]);
@@ -40,12 +27,7 @@ export default function RegulacionesAdmin() {
     setLoading(true);
     setErr("");
     try {
-      const res = await fetch(ENDPOINT, { headers: { ...authHeaders() } });
-      if (!res.ok) {
-        const j = await safeJson(res);
-        throw new Error(j?.error || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await apiGet("/api/admin/regulaciones");
       const list = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
       setRegs(list.map(normalize));
     } catch (e) {
@@ -56,33 +38,19 @@ export default function RegulacionesAdmin() {
     }
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr("");
     try {
-      if (!form.code || !form.name) {
-        throw new Error("Completa 'code' y 'name'");
-      }
-      // enviamos en inglés; tu backend usa estos nombres.
-      const res = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          code: form.code.trim(),
-          name: form.name.trim(),
-          version: form.version?.trim() || null,
-          source_url: form.source_url?.trim() || null,
-        }),
+      if (!form.code || !form.name) throw new Error("Completa 'code' y 'name'");
+      await apiPost("/api/admin/regulaciones", {
+        code: form.code.trim(),
+        name: form.name.trim(),
+        version: form.version?.trim() || null,
+        source_url: form.source_url?.trim() || null,
       });
-      if (!res.ok) {
-        const j = await safeJson(res);
-        throw new Error(j?.error || `HTTP ${res.status}`);
-      }
       setForm({ code: "", name: "", version: "", source_url: "" });
       setShowForm(false);
       await load();
@@ -149,15 +117,9 @@ export default function RegulacionesAdmin() {
       )}
 
       {loading && <p>Cargando…</p>}
-      {err && (
-        <p style={{ color: "#c62828", marginTop: 8 }}>
-          {err}
-        </p>
-      )}
+      {err && <p style={{ color: "#c62828", marginTop: 8 }}>{err}</p>}
 
-      {!loading && !err && regs.length === 0 && (
-        <p>No hay regulaciones todavía.</p>
-      )}
+      {!loading && !err && regs.length === 0 && <p>No hay regulaciones todavía.</p>}
 
       {!loading && !err && regs.length > 0 && (
         <div className="g-card" style={{ padding: 0, overflowX: "auto" }}>
@@ -187,14 +149,6 @@ export default function RegulacionesAdmin() {
       )}
     </div>
   );
-}
-
-async function safeJson(res) {
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
 
 function formatDate(iso) {

@@ -1,11 +1,6 @@
 // src/modules/admin/EmpresasAdmin.jsx
 import { useEffect, useState } from "react";
-import { authHeader } from "../../utils/authHeader";
-
-//const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const isProd = import.meta.env.MODE === "production";
-// 🔒 En producción SIEMPRE mismo origen; en dev usa VITE_API_URL o localhost
-const API = isProd ? "" : (import.meta.env.VITE_API_URL ?? "http://localhost:4000");
+import { apiGet, apiPost } from "@/api";
 
 export default function EmpresasAdmin() {
   const [items, setItems] = useState([]);
@@ -16,10 +11,8 @@ export default function EmpresasAdmin() {
   const load = async () => {
     try {
       setErr("");
-      const r = await fetch(`${API}/api/empresas`, { headers: authHeader() });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      setItems(data);
+      const data = await apiGet("/api/empresas");
+      setItems(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
       setErr("No se pudieron cargar las empresas.");
@@ -33,15 +26,7 @@ export default function EmpresasAdmin() {
     try {
       setBusy(true);
       setErr("");
-      const r = await fetch(`${API}/api/admin/empresas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader() },
-        body: JSON.stringify(form),
-      });
-      if (!r.ok) {
-        const t = await r.text().catch(()=> "");
-        throw new Error(`HTTP ${r.status} ${t}`);
-      }
+      await apiPost("/api/admin/empresas", form);
       setForm({ nombre: "", rfc: "", contacto: "" });
       await load();
       alert("Empresa creada.");
@@ -57,9 +42,11 @@ export default function EmpresasAdmin() {
     <div className="page-container">
       <h1>Empresas</h1>
 
-      {err && <div style={{background:"#ffe3e3",color:"#8a1a1a",padding:12,borderRadius:8,marginBottom:12}}>
-        <strong>Error:</strong> {err}
-      </div>}
+      {err && (
+        <div style={{background:"#ffe3e3",color:"#8a1a1a",padding:12,borderRadius:8,marginBottom:12}}>
+          <strong>Error:</strong> {err}
+        </div>
+      )}
 
       <form onSubmit={create} className="g-card" style={{maxWidth:720, marginBottom:16}}>
         <label>Nombre *</label>

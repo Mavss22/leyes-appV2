@@ -1,5 +1,6 @@
+// src/modules/admin/ControlesAdmin.jsx
 import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "../../api";
+import { apiGet, apiPost } from "@/api";
 
 export default function ControlesAdmin() {
   const [regs, setRegs] = useState([]);
@@ -10,28 +11,27 @@ export default function ControlesAdmin() {
   const [form, setForm] = useState({ clave: "", pregunta: "", recomendacion: "", peso: 1 });
 
   useEffect(() => {
-    apiGet("/api/admin/regulations").then(setRegs).catch(console.error);
+    apiGet("/api/admin/regulaciones").then(setRegs).catch(console.error);
   }, []);
 
   useEffect(() => {
     if (!regId) { setArticles([]); setListPrev([]); return; }
-    apiGet(`/api/admin/regulations/${regId}/articles`).then(setArticles).catch(console.error);
-    // opcional: vista previa de controles ya creados (por regulación)
+    apiGet(`/api/admin/regulaciones/${regId}/articulos`).then(setArticles).catch(console.error);
     apiGet(`/api/controles/por-regulacion/${regId}`).then(setListPrev).catch(()=>setListPrev([]));
   }, [regId]);
 
   const save = async (e) => {
     e.preventDefault();
-    await apiPost("/api/admin/controls", {
-      regulation_id: regId,
-      article_id: articleId,
+    await apiPost("/api/admin/controles", {
+      regulacion_id: regId,
+      articulo_id: articleId || null,
       clave: form.clave || null,
       pregunta: form.pregunta,
       recomendacion: form.recomendacion || null,
       peso: Number(form.peso) || 1,
     });
     setForm({ clave: "", pregunta: "", recomendacion: "", peso: 1 });
-    const prev = await apiGet(`/api/controles/por-regulacion/${regId}`);
+    const prev = await apiGet(`/api/controles/por-regulacion/${regId}`).catch(()=>[]);
     setListPrev(prev);
   };
 
@@ -43,7 +43,7 @@ export default function ControlesAdmin() {
         <label>Regulación</label>
         <select value={regId} onChange={e=>setRegId(e.target.value)} required>
           <option value="">Seleccione…</option>
-          {regs.map(r => <option key={r.id} value={r.id}>{r.code} — {r.name}</option>)}
+          {regs.map(r => <option key={r.id} value={r.id}>{(r.code||r.codigo)} — {(r.name||r.nombre)}</option>)}
         </select>
 
         {!!regId && (
@@ -53,7 +53,7 @@ export default function ControlesAdmin() {
               <option value="">Seleccione…</option>
               {articles.map(a =>
                 <option key={a.id} value={a.id}>
-                  {a.code || "(s/art)"} — {a.title?.slice(0,80)}
+                  {(a.code || a.codigo || "(s/art)")} — {(a.title || a.titulo || "").slice(0,80)}
                 </option>
               )}
             </select>
@@ -62,7 +62,9 @@ export default function ControlesAdmin() {
               <div className="g-card" style={{marginTop:12}}>
                 <strong>Preview artículo:</strong>
                 <p style={{whiteSpace:"pre-wrap"}}>
-                  {articles.find(a=>a.id===articleId)?.body?.slice(0,600) || "Sin texto"}
+                  {articles.find(a=>a.id===articleId)?.body?.slice(0,600)
+                    || articles.find(a=>a.id===articleId)?.cuerpo?.slice(0,600)
+                    || "Sin texto"}
                 </p>
               </div>
             )}
