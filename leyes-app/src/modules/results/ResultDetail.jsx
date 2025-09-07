@@ -3,19 +3,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useNavigate, useParams } from "react-router-dom";
-import { API_URL, authHeaders, apiGet } from "@/api";
+
+// 👇 OJO: usamos tu api.js real (API, authHeaders, apiGet)
+import { API as API_URL, authHeaders, apiGet } from "../../api";
 
 export default function ResultDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  // cabecera evaluación
   const [ev, setEv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  // metadatos de preguntas
   const [controles, setControles] = useState([]);
+
+  // estados por control
   const [answers, setAnswers] = useState({});
   const [comments, setComments] = useState({});
+
+  // evidencias por control
   const [evidencias, setEvidencias] = useState({});
 
   const resultRef = useRef();
@@ -23,6 +31,7 @@ export default function ResultDetail() {
   const colorNivel = (pct) =>
     pct >= 80 ? "#2e7d32" : pct >= 60 ? "#f9a825" : pct >= 40 ? "#ef6c00" : "#c62828";
 
+  /* ---------------------- carga evaluación + controles ---------------------- */
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -70,25 +79,36 @@ export default function ResultDetail() {
     return m;
   }, [controles]);
 
-  const fmtNivel = (pct) => (pct >= 80 ? "Alto" : pct >= 60 ? "Medio" : pct >= 40 ? "Bajo" : "Crítico");
+  const fmtNivel = (pct) =>
+    pct >= 80 ? "Alto" : pct >= 60 ? "Medio" : pct >= 40 ? "Bajo" : "Crítico";
 
   const pct = ev?.cumplimiento ?? ev?.pct ?? 0;
   const nivel = ev?.nivel || fmtNivel(pct);
 
-  // helpers
+  /* ----------------------------- helpers ----------------------------- */
+  // Intenta construir “Art. 1 — Subject-matter and objectives”
   const getArticleLabel = (meta) => {
     if (!meta) return "-";
     const code =
-      meta.articulo_code || meta.art_code || meta.code || meta.articulo || null;
+      meta.articulo_code ||
+      meta.art_code ||
+      meta.code ||
+      meta.articulo || // a veces el backend pone aquí el código
+      null;
+
     const title =
-      meta.articulo_titulo || meta.art_title || meta.title ||
-      (meta.articulo && !code ? meta.articulo : null);
+      meta.articulo_titulo ||
+      meta.art_title ||
+      meta.title ||
+      (meta.articulo && !code ? meta.articulo : null); // fallback si “articulo” realmente era el título
+
     if (code && title) return `${code} — ${title}`;
     if (code) return `${code}`;
     if (title) return `${title}`;
     return "-";
   };
 
+  /* ----------------------------- handlers UI ----------------------------- */
   const setAnswer = (clave, value) => setAnswers((p) => ({ ...p, [clave]: value }));
   const setComment = (clave, value) => setComments((p) => ({ ...p, [clave]: value }));
   const showEvidenceBlock = (val) => val === "true" || val === "partial";
@@ -124,8 +144,8 @@ export default function ResultDetail() {
 
       const r = await fetch(`${API_URL}/api/evidencias`, {
         method: "POST",
-        headers: authHeaders(),
-        body: fd,
+        headers: authHeaders(), // solo Authorization
+        body: fd,               // NO fijes Content-Type
       });
       if (!r.ok) {
         const t = await r.text().catch(() => "");
@@ -135,7 +155,10 @@ export default function ResultDetail() {
       setEvidencias((prev) => ({
         ...prev,
         [clave]: {
-          filesToSend: [], uploaded: data.files || [], uploading: false, err: "",
+          filesToSend: [],
+          uploaded: data.files || [],
+          uploading: false,
+          err: "",
         },
       }));
       alert("Evidencia subida correctamente.");
@@ -150,14 +173,17 @@ export default function ResultDetail() {
 
   const saveControl = async (clave) => {
     try {
-      const r = await fetch(`${API_URL}/api/evaluaciones/${id}/respuestas/${encodeURIComponent(clave)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          valor: answers[clave] || "",
-          comentario: (comments[clave] || "").trim(),
-        }),
-      });
+      const r = await fetch(
+        `${API_URL}/api/evaluaciones/${id}/respuestas/${encodeURIComponent(clave)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            valor: answers[clave] || "",
+            comentario: (comments[clave] || "").trim(),
+          }),
+        }
+      );
       if (!r.ok) {
         const t = await r.text().catch(() => "");
         throw new Error(t || "No se pudo guardar");
@@ -179,13 +205,14 @@ export default function ResultDetail() {
     }
   };
 
-  // PDF (igual que tenías, sin tocar lógica principal)
+  /* ------------------------------ PDF PRO ------------------------------ */
   const downloadReportPdf = () => {
     if (!ev) return;
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const margin = 40;
     let y = margin;
 
+    // colores
     const ACCENT = [91, 107, 255];
     const fecha = new Date().toISOString().slice(0, 10);
     const empresa = ev.company_name || "-";
@@ -193,6 +220,7 @@ export default function ResultDetail() {
     const started = ev.started_at ? new Date(ev.started_at).toLocaleString() : "-";
     const due = ev.due_at ? new Date(ev.due_at).toLocaleString() : "-";
 
+    // Header
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
     doc.text(`Informe de evaluación — ${normativa}`, margin, y);
@@ -203,11 +231,15 @@ export default function ResultDetail() {
     doc.rect(margin, y, doc.internal.pageSize.getWidth() - margin * 2, 2, "F");
     y += 18;
 
+    // Cabecera breve
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
-    doc.text(`Empresa: ${empresa}`, margin, y); y += 16;
-    doc.text(`Fecha: ${fecha}`, margin, y); y += 20;
+    doc.text(`Empresa: ${empresa}`, margin, y);
+    y += 16;
+    doc.text(`Fecha: ${fecha}`, margin, y);
+    y += 20;
 
+    // Inciso de introducción
     const intro =
       `Estimada empresa ${empresa},\n\n` +
       `Se ha llevado a cabo el análisis de la evaluación del cumplimiento de la normativa ${normativa} ` +
@@ -218,10 +250,14 @@ export default function ResultDetail() {
       `comentarios específicos sobre el nivel de implementación de los controles requeridos y las áreas que ` +
       `requieren mejora para alcanzar un cumplimiento integral y consistente.`;
 
-    const introLines = doc.splitTextToSize(intro, doc.internal.pageSize.getWidth() - margin * 2);
+    const introLines = doc.splitTextToSize(
+      intro,
+      doc.internal.pageSize.getWidth() - margin * 2
+    );
     doc.text(introLines, margin, y);
     y += introLines.length * 14 + 10;
 
+    // Resumen
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
     doc.text("Resumen", margin, y);
@@ -236,16 +272,23 @@ export default function ResultDetail() {
       `Vence: ${due}`,
       `Estado: ${ev.status || "open"}`,
     ];
-    resumen.forEach((line) => { doc.text(line, margin, y); y += 14; });
+    resumen.forEach((line) => {
+      doc.text(line, margin, y);
+      y += 14;
+    });
     y += 6;
 
+    // Incumplimientos
     const incumplimientos = [];
     (ev.respuestas || []).forEach((row) => {
       const clave = row.control_clave || row.clave;
       const v = answers[clave] || row.valor || "";
       if (v !== "true") {
         const meta = controlesByKey.get(clave) || {};
-        const recomendacion = v === "partial" ? "Revisar y completar este control." : "Implementar este control.";
+        const recomendacion =
+          v === "partial"
+            ? "Revisar y completar este control."
+            : "Implementar este control.";
         incumplimientos.push({
           control: meta.pregunta || `Control ${clave}`,
           articulo: getArticleLabel(meta),
@@ -262,28 +305,30 @@ export default function ResultDetail() {
 
       autoTable(doc, {
         startY: y,
-        head: [["Control", "Artículo", "Recomendación"]]],
+        head: [["Control", "Artículo", "Recomendación"]],
         body: incumplimientos.map((i) => [i.control, i.articulo, i.recomendacion]),
         styles: { fontSize: 10, cellPadding: 6 },
         headStyles: { fillColor: ACCENT, textColor: 255, fontStyle: "bold" },
         margin: { left: margin, right: margin },
-        columnStyles: { 0: { cellWidth: 258 }, 1: { cellWidth: 133 }, 2: { cellWidth: 100 } },
+        columnStyles: {
+          0: { cellWidth: 258 }, // control
+          1: { cellWidth: 133 }, // artículo (más angosto)
+          2: { cellWidth: 100 }, // recomendación
+        },
       });
       y = doc.lastAutoTable.finalY + 16;
     }
 
+    // Tabla de respuestas
     const tableRows = (ev.respuestas || []).map((row, idx) => {
       const clave = row.control_clave || row.clave;
       const meta = controlesByKey.get(clave) || {};
       const v = (answers[clave] || row.valor || "")
-        .replace("true", "Sí").replace("partial", "Parcial").replace("false", "No");
+        .replace("true", "Sí")
+        .replace("partial", "Parcial")
+        .replace("false", "No");
       const comentario = (comments[clave] || row.comentario || "").trim();
-      return [
-        meta.pregunta || `Control ${idx + 1}`,
-        getArticleLabel(meta),
-        v || "-",
-        comentario || "-",
-      ];
+      return [meta.pregunta || `Control ${idx + 1}`, getArticleLabel(meta), v || "-", comentario || "-"];
     });
 
     doc.setFont("helvetica", "bold");
@@ -298,7 +343,12 @@ export default function ResultDetail() {
       styles: { fontSize: 9, cellPadding: 5, valign: "top" },
       headStyles: { fillColor: [240, 240, 240], textColor: 33, fontStyle: "bold" },
       margin: { left: margin, right: margin },
-      columnStyles: { 0: { cellWidth: 180 }, 1: { cellWidth: 100 }, 2: { cellWidth: 70 }, 3: { cellWidth: 140 } },
+      columnStyles: {
+        0: { cellWidth: 180 }, // control
+        1: { cellWidth: 100 }, // artículo (código + título)
+        2: { cellWidth: 70 },  // respuesta
+        3: { cellWidth: 140 }, // comentario
+      },
       didDrawPage: (data) => {
         const str = `Generado el ${fecha} — Leyes-App`;
         const h = doc.internal.pageSize.height;
@@ -312,48 +362,94 @@ export default function ResultDetail() {
     doc.save(`Informe_${safe(normativa)}_${fecha}.pdf`);
   };
 
-  if (loading) return <div className="page-container"><p>Cargando…</p></div>;
-  if (err) return <div className="page-container"><p style={{ color: "#c62828" }}>{err}</p></div>;
+  if (loading)
+    return (
+      <div className="page-container">
+        <p>Cargando…</p>
+      </div>
+    );
+  if (err)
+    return (
+      <div className="page-container">
+        <p style={{ color: "#c62828" }}>{err}</p>
+      </div>
+    );
   if (!ev) return null;
 
   return (
     <div className="page-container" style={{ paddingTop: 18 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+      {/* encabezado */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 12,
+        }}
+      >
         <h1 style={{ margin: 0 }}>Evaluación — {ev.normativa}</h1>
         <div style={{ display: "flex", gap: 10 }}>
-          <button className="btn-secondary" onClick={() => navigate(-1)}>Volver</button>
-          <button className="btn-primary" onClick={downloadReportPdf}>Descargar PDF</button>
+          <button className="btn-secondary" onClick={() => navigate(-1)}>
+            Volver
+          </button>
+          <button className="btn-primary" onClick={downloadReportPdf}>
+            Descargar PDF
+          </button>
         </div>
       </div>
 
+      {/* layout responsive: sidebar izquierda + contenido */}
       <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 20 }}>
         {/* Sidebar */}
         <div style={{ display: "grid", gap: 12, alignContent: "start" }}>
           <div className="g-card" style={{ padding: 14 }}>
             <h3 style={{ margin: "0 0 10px 0", color: "#1565c0" }}>Resultado</h3>
-            <p><strong>Empresa:</strong> {ev.company_name || "-"}</p>
-            <p><strong>Cumplimiento:</strong> {Math.round(pct)}%</p>
+            <p>
+              <strong>Empresa:</strong> {ev.company_name || "-"}
+            </p>
+            <p>
+              <strong>Cumplimiento:</strong> {Math.round(pct)}%
+            </p>
             <p>
               <strong>Nivel:</strong>{" "}
-              <span style={{ backgroundColor: colorNivel(pct), color: "white", padding: "2px 8px", borderRadius: 6 }}>
+              <span
+                style={{
+                  backgroundColor: colorNivel(pct),
+                  color: "white",
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                }}
+              >
                 {nivel}
               </span>
             </p>
           </div>
 
           <div className="g-card" style={{ padding: 14 }}>
-            <p><strong>Normativa:</strong> {ev.normativa}</p>
-            <p><strong>Estado:</strong> {ev.status || "open"} <small>(editable)</small></p>
+            <p>
+              <strong>Normativa:</strong> {ev.normativa}
+            </p>
+            <p>
+              <strong>Estado:</strong> {ev.status || "open"} <small>(editable)</small>
+            </p>
             {ev.started_at && (
               <p style={{ marginTop: 8 }}>
-                <small><strong>Fecha inicio:</strong> {new Date(ev.started_at).toLocaleString()}</small><br />
-                <small><strong>Fecha límite:</strong> {ev.due_at ? new Date(ev.due_at).toLocaleString() : "-"}</small>
+                <small>
+                  <strong>Fecha inicio:</strong>{" "}
+                  {new Date(ev.started_at).toLocaleString()}
+                </small>
+                <br />
+                <small>
+                  <strong>Fecha límite:</strong>{" "}
+                  {ev.due_at ? new Date(ev.due_at).toLocaleString() : "-"}
+                </small>
               </p>
             )}
           </div>
         </div>
 
-        {/* Respuestas + evidencias */}
+        {/* Contenido (respuestas + evidencias) */}
         <div ref={resultRef}>
           <h3 style={{ marginTop: 0 }}>Respuestas</h3>
 
@@ -362,42 +458,86 @@ export default function ResultDetail() {
               const clave = row.control_clave || row.clave;
               const val = answers[clave] || "";
               const ctrl = controlesByKey.get(clave) || {};
-              const evd = evidencias[clave] || { filesToSend: [], uploaded: [], uploading: false, err: "" };
+              const evd =
+                evidencias[clave] || {
+                  filesToSend: [],
+                  uploaded: [],
+                  uploading: false,
+                  err: "",
+                };
 
               return (
                 <div key={clave || idx} className="g-card" style={{ padding: 12 }}>
+                  {/* título */}
                   <div style={{ marginBottom: 8, fontWeight: 600 }}>
                     {ctrl.pregunta ? ctrl.pregunta : `Control ${clave}`}
                     {getArticleLabel(ctrl) !== "-" && (
                       <span style={{ opacity: 0.7, fontWeight: 400 }}>
-                        {" "} <em>({getArticleLabel(ctrl)})</em>
+                        {" "}
+                        <em>({getArticleLabel(ctrl)})</em>
                       </span>
                     )}
                   </div>
 
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                  {/* botones */}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      marginBottom: 8,
+                    }}
+                  >
                     <button
                       type="button"
                       onClick={() => setAnswer(clave, "true")}
-                      style={{ background: val === "true" ? "#4caf50" : "#eee", color: val === "true" ? "#fff" : "#111",
-                               border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                    >✔️ Sí</button>
+                      style={{
+                        background: val === "true" ? "#4caf50" : "#eee",
+                        color: val === "true" ? "#fff" : "#111",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✔️ Sí
+                    </button>
                     <button
                       type="button"
                       onClick={() => setAnswer(clave, "partial")}
-                      style={{ background: val === "partial" ? "#ffc107" : "#eee", color: "#111",
-                               border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                    >⚠️ Parcial</button>
+                      style={{
+                        background: val === "partial" ? "#ffc107" : "#eee",
+                        color: "#111",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ⚠️ Parcial
+                    </button>
                     <button
                       type="button"
                       onClick={() => setAnswer(clave, "false")}
-                      style={{ background: val === "false" ? "#f44336" : "#eee", color: val === "false" ? "#fff" : "#111",
-                               border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                    >❌ No</button>
+                      style={{
+                        background: val === "false" ? "#f44336" : "#eee",
+                        color: val === "false" ? "#fff" : "#111",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ❌ No
+                    </button>
                   </div>
 
+                  {/* comentario */}
                   <div style={{ marginBottom: 10 }}>
-                    <label style={{ display: "block", marginBottom: 4 }}>Comentario</label>
+                    <label style={{ display: "block", marginBottom: 4 }}>
+                      Comentario
+                    </label>
                     <textarea
                       rows={2}
                       style={{ width: "100%", padding: 8 }}
@@ -406,10 +546,31 @@ export default function ResultDetail() {
                     />
                   </div>
 
+                  {/* evidencias */}
                   {(val === "true" || val === "partial") && (
-                    <div style={{ margin: "10px 0", background: "#f5f8ff", border: "1px dashed #90caf9", padding: 12, borderRadius: 8 }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <input type="file" multiple accept="image/*,application/pdf" onChange={(e) => onPickFiles(clave, e.target.files)} />
+                    <div
+                      style={{
+                        margin: "10px 0",
+                        background: "#f5f8ff",
+                        border: "1px dashed #90caf9",
+                        padding: 12,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,application/pdf"
+                          onChange={(e) => onPickFiles(clave, e.target.files)}
+                        />
                         <button
                           type="button"
                           onClick={() => uploadEvidence(clave)}
@@ -419,12 +580,17 @@ export default function ResultDetail() {
                         >
                           {evd.uploading ? "Subiendo…" : "Subir evidencia"}
                         </button>
-                        {evd.err && <span style={{ color: "#c62828" }}>{evd.err}</span>}
+                        {evd.err && (
+                          <span style={{ color: "#c62828" }}>{evd.err}</span>
+                        )}
                       </div>
 
                       {evd.filesToSend?.length > 0 && (
                         <div style={{ marginTop: 6 }}>
-                          <small><strong>Seleccionados:</strong> {evd.filesToSend.map((f) => f.name).join(", ")}</small>
+                          <small>
+                            <strong>Seleccionados:</strong>{" "}
+                            {evd.filesToSend.map((f) => f.name).join(", ")}
+                          </small>
                         </div>
                       )}
 
@@ -433,7 +599,13 @@ export default function ResultDetail() {
                           <small>
                             <strong>Subidos:</strong>{" "}
                             {evd.uploaded.map((f, i) => (
-                              <a key={i} href={`${API_URL}${f.url}`} target="_blank" rel="noreferrer" style={{ marginRight: 10 }}>
+                              <a
+                                key={i}
+                                href={`${API_URL}${f.url}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ marginRight: 10 }}
+                              >
                                 {f.filename}
                               </a>
                             ))}
@@ -443,11 +615,19 @@ export default function ResultDetail() {
                     </div>
                   )}
 
+                  {/* guardar */}
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
                       className="btn-primary"
                       onClick={() => saveControl(clave)}
-                      style={{ background: "#5b6bff", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}
+                      style={{
+                        background: "#5b6bff",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "8px 14px",
+                        cursor: "pointer",
+                      }}
                     >
                       Guardar cambios
                     </button>
