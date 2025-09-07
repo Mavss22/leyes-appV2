@@ -4,7 +4,9 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { authHeader } from "../../utils/authHeader";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+// 🔒 En producción usamos mismo origen; en dev VITE_API_URL o localhost
+const isProd = import.meta.env.MODE === "production";
+const API = isProd ? "" : (import.meta.env.VITE_API_URL ?? "http://localhost:4000");
 
 export default function EvaluacionFormulario({ normativaSeleccionada }) {
   // Empresas
@@ -55,7 +57,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
             const t2 = await r.text().catch(() => "");
             throw new Error(`No se pudieron cargar empresas. HTTP ${r.status} ${t2}`);
           }
-        } 
+        }
         const raw = await r.json();
         const arr = normalizeCompanies(raw);
         setCompanies(arr);
@@ -156,7 +158,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       const h = authHeader() || {};
       const r = await fetch(`${API}/api/evidencias`, {
         method: "POST",
-        headers: { ...h }, // NO setear Content-Type aquí
+        headers: { ...h }, // NO fijes Content-Type
         body: fd,
       });
 
@@ -218,7 +220,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
 
     try {
       let r = await post(`${API}/api/evaluaciones`);
-      if (r.status === 404) r = await post(`${API}/api/evaluar`); // fallback (legacy)
+      if (r.status === 404) r = await post(`${API}/api/evaluar`); // fallback legacy
       if (!r.ok) {
         const t = await r.text().catch(() => "");
         throw new Error(t || `HTTP ${r.status}`);
@@ -259,12 +261,10 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
   const fmtArt = (a) => {
     if (!a) return null;
     const s = String(a).trim();
-    // Soporta "2", "Art 2", "Art. 2", "art.2"
     const m = s.match(/^\s*(?:art\.?\s*)?(\d+[A-Za-z]?)\s*$/i);
     if (m) return `Art. ${m[1]}`;
-    // Si ya viene con Art., lo normalizamos el punto/espacios
     if (/^art/i.test(s)) return s.replace(/^art\.?\s*/i, "Art. ");
-    return s; // fallback
+    return s;
   };
 
   const comentariosNormalizados = useMemo(() => {
@@ -287,7 +287,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       .filter((c) => c.comentario.length > 0);
   }, [resultado]);
 
-  // PDF
+  // PDF (captura del panel de resultados)
   const downloadPdf = () => {
     const el = resultadoRef.current;
     if (!el) return;
@@ -308,8 +308,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       pdf.text(`Empresa: ${selectedCompanyName || "-"}`, 40, 56);
       pdf.text(`Fecha: ${fecha}`, 40, 70);
 
-      const top = 84,
-        bottom = 30;
+      const top = 84, bottom = 30;
       const availH = pdfH - top - bottom;
       const img = pdf.getImageProperties(imgData);
       const w = pdfW - 80;
