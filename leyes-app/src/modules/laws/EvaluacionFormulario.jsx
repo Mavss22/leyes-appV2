@@ -1,14 +1,7 @@
 // src/modules/laws/EvaluacionFormulario.jsx
 import { useEffect, useMemo, useState } from "react";
-import { authHeader } from "../../utils/authHeader";
+import { API_URL, authHeaders, apiGet } from "@/api";
 import { generarPdfCumplimiento } from "../../utils/pdfReporteCumplimiento";
-
-//const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-
-const isProd = import.meta.env.MODE === "production";
-// 🔒 En producción SIEMPRE mismo origen; en dev usa VITE_API_URL o localhost
-const API = isProd ? "" : (import.meta.env.VITE_API_URL ?? "http://localhost:4000");
-
 
 export default function EvaluacionFormulario({ normativaSeleccionada }) {
   // Empresas
@@ -26,13 +19,11 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
   // Evidencias por control
   const [evidencias, setEvidencias] = useState({});
 
-  // Empresa seleccionada (derivado)
   const selectedCompanyName = useMemo(() => {
     const found = companies.find((c) => c.id === companyId);
     return found?.name || "";
   }, [companies, companyId]);
 
-  // Normalizar empresas de distintos endpoints
   const normalizeCompanies = (raw) =>
     (Array.isArray(raw) ? raw : [])
       .map((x) => ({
@@ -47,20 +38,11 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       setCompBusy(true);
       setCompErr("");
       try {
-        const h = authHeader() || {};
-        let r = await fetch(`${API}/api/empresas`, { headers: { ...h } });
-        if (!r.ok) {
-          const t = await r.text().catch(() => "");
-          console.warn("GET /api/empresas:", r.status, t);
+        let data = await apiGet("/api/empresas").catch(async () => {
           // Fallback admin (si el usuario tiene permisos)
-          r = await fetch(`${API}/api/admin/empresas`, { headers: { ...h } });
-          if (!r.ok) {
-            const t2 = await r.text().catch(() => "");
-            throw new Error(`No se pudieron cargar empresas. HTTP ${r.status} ${t2}`);
-          }
-        }
-        const raw = await r.json();
-        const arr = normalizeCompanies(raw);
+          return apiGet("/api/admin/empresas");
+        });
+        const arr = normalizeCompanies(data);
         setCompanies(arr);
         if (arr.length && !companyId) setCompanyId(arr[0].id);
       } catch (e) {
@@ -85,15 +67,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
         setResultado(null);
         setEvidencias({});
 
-        const h = authHeader() || {};
-        const r = await fetch(`${API}/api/controles/${normativaSeleccionada}`, {
-          headers: { ...h },
-        });
-        if (!r.ok) {
-          const t = await r.text().catch(() => "");
-          throw new Error(`Error cargando controles: HTTP ${r.status} ${t}`);
-        }
-        const data = await r.json();
+        const data = await apiGet(`/api/controles/${normativaSeleccionada}`);
         const arr = Array.isArray(data) ? data : [];
         setControles(arr);
 
@@ -156,11 +130,10 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       fd.append("clave", clave);
       item.filesToSend.forEach((f) => fd.append("files", f));
 
-      const h = authHeader() || {};
-      const r = await fetch(`${API}/api/evidencias`, {
+      const r = await fetch(`${API_URL}/api/evidencias`, {
         method: "POST",
-        headers: { ...h }, // NO setear Content-Type aquí
-        body: fd,
+        headers: authHeaders(), // solo Authorization
+        body: fd,               // NO fijar Content-Type manualmente
       });
 
       if (!r.ok) {
@@ -204,7 +177,6 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       };
     });
 
-    const h = authHeader() || {};
     const payload = {
       empresa: selectedCompanyName || "",
       company_id: companyId || null,
@@ -212,23 +184,22 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       respuestas: respuestasPayload,
     };
 
-    const post = (url) =>
-      fetch(url, {
+    const post = (path) =>
+      fetch(`${API_URL}${path}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...h },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify(payload),
       });
 
     try {
-      let r = await post(`${API}/api/evaluaciones`);
-      if (r.status === 404) r = await post(`${API}/api/evaluar`); // fallback (legacy)
+      let r = await post("/api/evaluaciones");
+      if (r.status === 404) r = await post("/api/evaluar"); // fallback legacy
       if (!r.ok) {
         const t = await r.text().catch(() => "");
         throw new Error(t || `HTTP ${r.status}`);
       }
 
       const data = await r.json();
-
       const cumplimiento = Math.round((data.cumplimiento ?? data.pct ?? 0) * 1);
       const nivel = data.nivel ?? data.level ?? "-";
       const incumplimientos = Array.isArray(data.incumplimientos)
@@ -258,16 +229,14 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
   const colorNivel = (pct) =>
     pct >= 80 ? "#2e7d32" : pct >= 60 ? "#f9a825" : pct >= 40 ? "#ef6c00" : "#c62828";
 
-  // ---- Helpers de presentación (artículos/comentarios) ----
+  // Helpers presentación
   const fmtArt = (a) => {
     if (!a) return null;
     const s = String(a).trim();
-    // Soporta "2", "Art 2", "Art. 2", "art.2"
     const m = s.match(/^\s*(?:art\.?\s*)?(\d+[A-Za-z]?)\s*$/i);
     if (m) return `Art. ${m[1]}`;
-    // Si ya viene con Art., lo normalizamos el punto/espacios
     if (/^art/i.test(s)) return s.replace(/^art\.?\s*/i, "Art. ");
-    return s; // fallback
+    return s;
   };
 
   const comentariosNormalizados = useMemo(() => {
@@ -290,10 +259,9 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       .filter((c) => c.comentario.length > 0);
   }, [resultado]);
 
-  // ===== PDF PRO (misma plantilla que resultados) =====
+  // PDF
   const onDescargarPdf = () => {
     if (!resultado) return;
-
     generarPdfCumplimiento({
       empresa: selectedCompanyName || "-",
       normativa: (normativaSeleccionada || "-").toUpperCase(),
@@ -301,10 +269,10 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       due_at: resultado.due_at,
       status: "open",
       pct: resultado.cumplimiento ?? 0,
-      nivel: resultado.nivel ?? undefined, // si no viene, se infiere del pct
-      controles,                // viene de /api/controles/{normativa}
-      answers: respuestas,      // mapa { clave: 'true|partial|false' }
-      comments: comentarios,    // mapa { clave: 'texto' }
+      nivel: resultado.nivel ?? undefined,
+      controles,
+      answers: respuestas,
+      comments: comentarios,
     });
   };
 
@@ -316,7 +284,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
       <div style={{ flex: 1 }}>
         <h2 style={{ color: "#6a1b9a" }}>Evaluación: {normativaSeleccionada}</h2>
 
-        {/* Selector Empresa */}
+        {/* Empresa */}
         <div className="g-card" style={{ padding: 12, marginBottom: 12 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span>Empresa</span>
@@ -351,7 +319,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
                   <strong>{control.pregunta}</strong>
                 </p>
 
-                {/* Botones de respuesta */}
+                {/* botones de respuesta */}
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     type="button"
@@ -409,7 +377,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
                   />
                 </div>
 
-                {/* Evidencias (si marcó Sí o Parcial) */}
+                {/* Evidencias (Sí/Parcial) */}
                 {showEvidenceBlock(val) && (
                   <div
                     style={{
@@ -454,7 +422,7 @@ export default function EvaluacionFormulario({ normativaSeleccionada }) {
                           {ev.uploaded.map((f, i) => (
                             <a
                               key={i}
-                              href={`${API}${f.url}`}
+                              href={`${API_URL}${f.url}`}
                               target="_blank"
                               rel="noreferrer"
                               style={{ marginRight: 10 }}

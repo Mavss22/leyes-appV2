@@ -1,9 +1,10 @@
+// src/modules/laws/Laws.jsx
 import "../../modules/laws/Laws.css";
-import evaluacionImg from "@/assets/logoLOGIN.png"; // placeholder para logos
+import evaluacionImg from "@/assets/logoLOGIN.png";
 import { useState } from "react";
 import EvaluacionFormulario from "./EvaluacionFormulario";
 
-const logoGDPR = evaluacionImg; // cámbialos cuando tengas los logos reales
+const logoGDPR = evaluacionImg;
 const logoJM   = evaluacionImg;
 
 const Laws = () => {
@@ -12,7 +13,6 @@ const Laws = () => {
   return (
     <>
       <div className="page-container evaluation-container">
-        {/* === HERO idéntico al de Home === */}
         <section className="home-hero laws-hero">
           <div className="home-hero__inner">
             <div className="home-hero__badge">Plataforma de Evaluación</div>
@@ -26,7 +26,6 @@ const Laws = () => {
           </div>
         </section>
 
-        {/* === Catálogo de normativas (solo visual) === */}
         <div className="laws-list">
           <div className="law-card" onClick={() => setNormativaSeleccionada("GDPR")}>
             <div className="law-card__logo law-card__logo--violet">
